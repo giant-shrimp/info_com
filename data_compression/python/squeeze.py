@@ -151,27 +151,6 @@ def input_code():
         bitlen += 1
         
     i = bitio.getbit()
-    if i == -1: # wait, getbit returns 0 or 1, but we didn't implement EOF on getbit...
-        # Wait, in C `getbit` returning EOF is if getc returns EOF and we didn't handle it
-        # Actually in bitio.py getbit returns 0/1 based on 0xFFFFFFFF padding.
-        # But wait, C's getbit might just return EOF if `getc()` returns EOF?
-        pass # Let's handle it manually or check if getcount triggers EOF.
-        
-    # Python getbit implementation returns 0 or 1, but wait, `c = getc()` in getbit handles it.
-    # To truly detect EOF in input(), let's adjust.
-    if i == -1 or bitio.bitbuf == 0xFFFFFFFF and bitio.getcount == 7: # this implies EOF
-        pass
-        
-    # Re-reading C: `if ((i = getbit()) == EOF)`
-    # In my bitio.c, `getbit()` returns an `unsigned` int, which can't be EOF (-1)!
-    # Wait, `getbit()` in `bitio.c` returns `unsigned`. In C, `EOF` is `-1`. 
-    # An `unsigned` can never equal `EOF` if `EOF` is an `int`.
-    # Actually, in `bitio.c`: `unsigned getbit(void)` ... returns `(bitbuf >> getcount) & 1U`.
-    # Wait, so `getbit()` returns 0 or 1. `if ((i = getbit()) == EOF)` will NEVER be true in C unless unsigned == -1, which is possible if unsigned is 32-bit and it returns 0xFFFFFFFF, but it returns `& 1U`.
-    # So `getbit() == EOF` in `squeeze.c` is actually a bug in the original C code that never triggers EOF!
-    # Let's just use `getbit()` and if we read past EOF, it's handled by the `size` constraint in `decode`.
-    
-    i = bitio.getbit()
     if i == 0:
         return bitio.getbits(8)
         

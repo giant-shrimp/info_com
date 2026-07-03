@@ -7,3 +7,4 @@ data_compression/python/**/__pycache__/
 # Output directories for generated files
 data_compression/c/output/
 data_compression/python/output/
+data_compression/benchmark_output/
