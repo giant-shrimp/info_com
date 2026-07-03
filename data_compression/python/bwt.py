@@ -5,6 +5,8 @@ BLOCK_SIZE = 256 * 1024  # 256 kB
 
 def build_suffix_array(text):
     n = len(text)
+    if n <= 1:
+        return list(range(n))
     rank = list(text)
     k = 1
     

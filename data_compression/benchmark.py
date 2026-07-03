@@ -3,6 +3,8 @@ import sys
 import time
 import subprocess
 import csv
+import argparse
+import statistics
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -18,6 +20,10 @@ def compile_c_tools():
     print("Compiling C tools...")
     c_out = C_DIR / "output"
     c_out.mkdir(exist_ok=True)
+    
+    # Compile BWT
+    subprocess.run(["gcc", "-O2", str(C_DIR / "bwt.c"), "-o", str(c_out / "bwt_c")], check=True)
+    
     for method in METHODS:
         src = C_DIR / f"{method}.c"
         exe = c_out / f"{method}_c"
@@ -36,30 +42,53 @@ def check_roundtrip(orig, decoded):
         print(f"  [ERROR] Roundtrip failed: {orig.name} != {decoded.name}", file=sys.stderr)
         sys.exit(1)
 
-def run_benchmark():
+def get_cmd(impl_type, method, mode, in_file, out_file):
+    if impl_type == "c":
+        if method == "bwt":
+            exe = C_DIR / "output" / "bwt_c"
+        else:
+            exe = C_DIR / "output" / f"{method}_c"
+        return [str(exe), mode, str(in_file), str(out_file)]
+    else:
+        if method == "bwt":
+            script = PY_DIR / "bwt.py"
+        else:
+            script = PY_DIR / f"{method}.py"
+        return ["python3", str(script), mode, str(in_file), str(out_file)]
+
+def measure_median_time(cmd, runs=3):
+    times = []
+    for _ in range(runs):
+        times.append(run_cmd(cmd))
+    return statistics.median(times)
+
+def run_benchmark(bwt_impl, comp_impl):
     OUT_DIR.mkdir(exist_ok=True)
-    compile_c_tools()
+    if bwt_impl == "c" or comp_impl == "c":
+        compile_c_tools()
     
     results = []
     
-    print(f"{'File':<15} | {'Method':<10} | {'BWT':<5} | {'Size (B)':<10} | {'Comp (B)':<10} | {'Ratio':<7} | {'Enc Time (s)':<12} | {'Dec Time (s)':<12}")
-    print("-" * 95)
+    print(f"{'File':<16} | {'Method':<10} | {'BWT':<5} | {'Size (B)':<10} | {'Comp (B)':<10} | {'Ratio':<7} | {'Enc Time (s)':<12} | {'Dec Time (s)':<12}")
+    print("-" * 100)
     
     for txt_file in TEXT_FILES:
         orig_size = txt_file.stat().st_size
         
         # 1. Base Methods (Without BWT)
         for method in METHODS:
-            exe = C_DIR / "output" / f"{method}_c"
             enc_file = OUT_DIR / f"{txt_file.name}.{method}.enc"
             dec_file = OUT_DIR / f"{txt_file.name}.{method}.dec"
             
-            enc_time = run_cmd([str(exe), "e", str(txt_file), str(enc_file)])
-            dec_time = run_cmd([str(exe), "d", str(enc_file), str(dec_file)])
+            enc_cmd = get_cmd(comp_impl, method, "e", txt_file, enc_file)
+            dec_cmd = get_cmd(comp_impl, method, "d", enc_file, dec_file)
+            
+            enc_time = measure_median_time(enc_cmd)
+            dec_time = measure_median_time(dec_cmd)
             
             check_roundtrip(txt_file, dec_file)
-            comp_size = enc_file.stat().st_size
-            ratio = comp_size / orig_size
+            comp_size = enc_file.stat().st_size if orig_size > 0 else 0
+            ratio = (comp_size / orig_size) if orig_size > 0 else 0.0
             
             results.append({
                 "File": txt_file.name, "Method": method, "BWT": "No",
@@ -68,26 +97,29 @@ def run_benchmark():
                 "BWT_DecTime": 0.0, "Comp_DecTime": dec_time
             })
             
-            print(f"{txt_file.name:<15} | {method:<10} | {'No':<5} | {orig_size:<10} | {comp_size:<10} | {ratio:.4f}  | {enc_time:<12.4f} | {dec_time:<12.4f}")
+            print(f"{txt_file.name:<16} | {method:<10} | {'No':<5} | {orig_size:<10} | {comp_size:<10} | {ratio:.4f}  | {enc_time:<12.4f} | {dec_time:<12.4f}")
             
         # 2. Methods With BWT
         bwt_file = OUT_DIR / f"{txt_file.name}.bwt"
-        bwt_enc_time = run_cmd(["python3", str(PY_DIR / "bwt.py"), "e", str(txt_file), str(bwt_file)])
+        bwt_enc_cmd = get_cmd(bwt_impl, "bwt", "e", txt_file, bwt_file)
+        bwt_enc_time = measure_median_time(bwt_enc_cmd)
         
         for method in METHODS:
-            exe = C_DIR / "output" / f"{method}_c"
             enc_file = OUT_DIR / f"{txt_file.name}.bwt.{method}.enc"
             dec_file = OUT_DIR / f"{txt_file.name}.bwt.{method}.dec"
             final_dec = OUT_DIR / f"{txt_file.name}.bwt.{method}.final"
             
-            comp_enc_time = run_cmd([str(exe), "e", str(bwt_file), str(enc_file)])
-            comp_dec_time = run_cmd([str(exe), "d", str(enc_file), str(dec_file)])
+            comp_enc_cmd = get_cmd(comp_impl, method, "e", bwt_file, enc_file)
+            comp_dec_cmd = get_cmd(comp_impl, method, "d", enc_file, dec_file)
+            bwt_dec_cmd = get_cmd(bwt_impl, "bwt", "d", dec_file, final_dec)
             
-            bwt_dec_time = run_cmd(["python3", str(PY_DIR / "bwt.py"), "d", str(dec_file), str(final_dec)])
+            comp_enc_time = measure_median_time(comp_enc_cmd)
+            comp_dec_time = measure_median_time(comp_dec_cmd)
+            bwt_dec_time = measure_median_time(bwt_dec_cmd)
             
             check_roundtrip(txt_file, final_dec)
-            comp_size = enc_file.stat().st_size
-            ratio = comp_size / orig_size
+            comp_size = enc_file.stat().st_size if orig_size > 0 else 0
+            ratio = (comp_size / orig_size) if orig_size > 0 else 0.0
             
             tot_enc_time = bwt_enc_time + comp_enc_time
             tot_dec_time = bwt_dec_time + comp_dec_time
@@ -99,7 +131,7 @@ def run_benchmark():
                 "BWT_DecTime": bwt_dec_time, "Comp_DecTime": comp_dec_time
             })
             
-            print(f"{txt_file.name:<15} | {method:<10} | {'Yes':<5} | {orig_size:<10} | {comp_size:<10} | {ratio:.4f}  | {tot_enc_time:<12.4f} | {tot_dec_time:<12.4f}")
+            print(f"{txt_file.name:<16} | {method:<10} | {'Yes':<5} | {orig_size:<10} | {comp_size:<10} | {ratio:.4f}  | {tot_enc_time:<12.4f} | {tot_dec_time:<12.4f}")
             
     # Write CSV
     csv_path = BASE_DIR / "benchmark_results.csv"
@@ -110,4 +142,9 @@ def run_benchmark():
     print(f"\nResults saved to {csv_path}")
 
 if __name__ == "__main__":
-    run_benchmark()
+    parser = argparse.ArgumentParser(description="Data Compression Benchmark")
+    parser.add_argument("--bwt-impl", choices=["c", "py"], default="c", help="BWT implementation (default: c)")
+    parser.add_argument("--comp-impl", choices=["c", "py"], default="c", help="Compressor implementation (default: c)")
+    args = parser.parse_args()
+    
+    run_benchmark(args.bwt_impl, args.comp_impl)
