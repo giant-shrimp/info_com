@@ -8,3 +8,4 @@ data_compression/python/**/__pycache__/
 data_compression/c/output/
 data_compression/python/output/
 data_compression/benchmark_output/
+data_compression/benchmark_results.csv
