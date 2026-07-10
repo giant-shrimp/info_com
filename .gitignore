@@ -5,10 +5,7 @@ data_compression/c/*_c
 data_compression/python/**/__pycache__/
 
 # Output directories for generated files
-data_compression/c/output/
-data_compression/python/output/
-data_compression/benchmark_output/
-data_compression/benchmark_results.csv
+data_compression/output/
 
 # error_correction ignores
 error_correction/c/*.o

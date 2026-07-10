@@ -7,12 +7,12 @@ import argparse
 import statistics
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 C_DIR = BASE_DIR / "c"
 PY_DIR = BASE_DIR / "python"
 TEXT_DIR = BASE_DIR / "textdata"
 TEST_DIR = BASE_DIR / "textdata_test"
-OUT_DIR = BASE_DIR / "benchmark_output"
+OUT_DIR = BASE_DIR / "output" / "files"
 
 METHODS = ["arith", "huffman", "slide", "squeeze"]
 TEXT_FILES = sorted([f for f in TEXT_DIR.glob("*.txt") if f.is_file()])
@@ -20,8 +20,8 @@ TEST_FILES = sorted([f for f in TEST_DIR.glob("*.txt") if f.is_file()])
 
 def compile_c_tools():
     print("Compiling C tools...")
-    c_out = C_DIR / "output"
-    c_out.mkdir(exist_ok=True)
+    c_out = BASE_DIR / "output" / "bin"
+    c_out.mkdir(parents=True, exist_ok=True)
     
     # Compile BWT
     subprocess.run(["gcc", "-O2", str(C_DIR / "bwt.c"), "-o", str(c_out / "bwt_c")], check=True)
@@ -46,10 +46,11 @@ def check_roundtrip(orig, decoded):
 
 def get_cmd(impl_type, method, mode, in_file, out_file):
     if impl_type == "c":
+        bin_dir = BASE_DIR / "output" / "bin"
         if method == "bwt":
-            exe = C_DIR / "output" / "bwt_c"
+            exe = bin_dir / "bwt_c"
         else:
-            exe = C_DIR / "output" / f"{method}_c"
+            exe = bin_dir / f"{method}_c"
         return [str(exe), mode, str(in_file), str(out_file)]
     else:
         if method == "bwt":
@@ -65,7 +66,7 @@ def measure_median_time(cmd, runs=3):
     return statistics.median(times)
 
 def run_benchmark(bwt_impl, comp_impl):
-    OUT_DIR.mkdir(exist_ok=True)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
     if bwt_impl == "c" or comp_impl == "c":
         compile_c_tools()
     
@@ -159,7 +160,7 @@ def run_benchmark(bwt_impl, comp_impl):
     print("Boundary tests passed successfully!")
 
     # Write CSV
-    csv_path = BASE_DIR / "benchmark_results.csv"
+    csv_path = BASE_DIR / "output" / "benchmark_results.csv"
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=results[0].keys())
         writer.writeheader()
